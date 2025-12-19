@@ -1,10 +1,359 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>My Tracker</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Tracker</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+
+<style>
+/* ===== BACKGROUND ===== */
+body{
+  margin:0;
+  font-family:Arial, sans-serif;
+  color:white;
+  background:url("https://i.ibb.co/MyRvKZqz/543f3581b458c8a2ac4412acd8152ee1.jpg")
+    center/cover fixed no-repeat;
+}
+.bg-overlay{
+  min-height:100vh;
+  background:rgba(0,0,0,0.55);
+  backdrop-filter:blur(4px);
+}
+
+/* ===== EDGE GLOWS ===== */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  opacity:0;
+  animation:pulse 3s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{opacity:.4}
+  50%{opacity:1}
+}
+body.fire-glow::before{
+  box-shadow: inset 0 0 90px rgba(255,140,0,.9);
+}
+body.snow-glow::before{
+  box-shadow: inset 0 0 90px rgba(255,255,255,.7);
+}
+body.leaf-glow::before{
+  box-shadow: inset 0 0 90px rgba(46,204,113,.8);
+}
+body.earth-glow::before{
+  box-shadow: inset 0 0 90px rgba(139,90,43,.8);
+}
+body.flower-glow::before{
+  box-shadow: inset 0 0 90px rgba(255,154,203,.9);
+}
+
+/* ===== COMMON UI ===== */
+.page{display:none;}
+.page.active{display:block;}
+.overlay{
+  padding:16px;
+  position:relative;
+  z-index:2;
+}
+
+.card{
+  background:rgba(255,255,255,0.15);
+  border-radius:16px;
+  padding:14px;
+  margin-bottom:12px;
+}
+.row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+button{
+  background:rgba(255,0,0,0.25);
+  border:1px solid rgba(255,0,0,0.4);
+  color:#ffdcdc;
+  padding:6px 14px;
+  border-radius:10px;
+}
+button.stop{
+  background:rgba(255,0,0,0.45);
+}
+
+textarea{
+  width:100%;
+  height:70px;
+  border-radius:10px;
+  border:none;
+  padding:8px;
+}
+
+canvas{
+  background:rgba(0,0,0,0.4);
+  border-radius:12px;
+}
+
+/* ===== BACKGROUND PARTICLES ===== */
+.effect-layer{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:0;
+  overflow:hidden;
+}
+.particle{
+  position:absolute;
+  animation:fall linear infinite;
+  opacity:.8;
+}
+@keyframes fall{
+  from{transform:translateY(-10vh)}
+  to{transform:translateY(110vh)}
+}
+.snow{width:6px;height:6px;background:white;border-radius:50%}
+.leaf{width:10px;height:16px;background:#2ecc71;border-radius:50% 50% 50% 0}
+.petal{width:12px;height:8px;background:#ff9acb;border-radius:50%}
+.dust{width:5px;height:5px;background:#8b5a2b;border-radius:50%}
+</style>
 </head>
+
 <body>
-  <h1>My Tracker</h1>
-  <p>Setup in progress...</p>
+<div id="effects" class="effect-layer"></div>
+<div class="bg-overlay">
+
+<!-- HOME -->
+<div id="home" class="page active overlay">
+<h2 align="center">My Tracker</h2>
+
+<div class="card row">
+<strong>🔥 Streak</strong>
+<span id="streak">0 days</span>
+</div>
+
+<div id="subjects"></div>
+
+<div class="card">
+<button onclick="goReport()">📊 Weekly Report</button>
+</div>
+
+<div class="card">
+<strong>📝 Daily Notes</strong>
+<textarea id="dailyNotes"></textarea>
+</div>
+
+<div class="card">
+<strong>🧪 Mock Test Notes</strong>
+<textarea id="mockNotes"></textarea>
+</div>
+
+<div class="card">
+<button onclick="saveDay()">Save Day</button>
+</div>
+</div>
+
+<!-- REPORT -->
+<div id="report" class="page overlay">
+<h2 align="center">Weekly Report</h2>
+<div class="card" style="overflow-x:auto;">
+<canvas id="weeklyChart" width="520" height="220"></canvas>
+</div>
+<div class="card">
+<button onclick="goHome()">⬅ Back</button>
+</div>
+</div>
+
+</div>
+
+<script>
+/* DOM */
+const home=document.getElementById("home");
+const report=document.getElementById("report");
+const subjects=document.getElementById("subjects");
+const streak=document.getElementById("streak");
+const dailyNotes=document.getElementById("dailyNotes");
+const mockNotes=document.getElementById("mockNotes");
+const weeklyChart=document.getElementById("weeklyChart");
+const effects=document.getElementById("effects");
+
+/* NAV */
+function goReport(){
+  home.classList.remove("active");
+  report.classList.add("active");
+  drawWeeklyChart();
+}
+function goHome(){
+  report.classList.remove("active");
+  home.classList.add("active");
+}
+
+/* STATE */
+let state={
+  subjects:{
+    "🌿 Botany":0,
+    "🐾 Zoology":0,
+    "Physics":0,
+    "❄️ Chemistry":0,
+    "🌸 English":0
+  },
+  running:null,
+  startTime:null,
+  weekly:[0,0,0,0,0,0,0],
+  streak:0,
+  lastSaved:null,
+  dailyNotes:"",
+  mockNotes:""
+};
+
+let effectInt=null;
+let liveTimerInterval=null;
+
+/* LOAD / SAVE */
+function loadData(){
+  const s=localStorage.getItem("myTracker");
+  if(s) state=JSON.parse(s);
+  dailyNotes.value=state.dailyNotes||"";
+  mockNotes.value=state.mockNotes||"";
+}
+function saveData(){
+  state.dailyNotes=dailyNotes.value;
+  state.mockNotes=mockNotes.value;
+  localStorage.setItem("myTracker",JSON.stringify(state));
+}
+
+/* UI */
+function updateUI(){
+  subjects.innerHTML="";
+  Object.keys(state.subjects).forEach(sub=>{
+    const run=state.running===sub;
+    subjects.innerHTML+=`
+    <div class="card">
+      <div class="row">
+        <span>${sub}</span>
+        <button class="${run?"stop":""}" onclick="toggleTimer('${sub}')">
+          ${run?"Stop":"Start"}
+        </button>
+      </div>
+      <small id="live-${sub}">
+        ${run ? "Studying: 00:00:00" : state.subjects[sub]+" min studied"}
+      </small>
+    </div>`;
+  });
+  streak.innerText=state.streak+" days";
+}
+
+/* BACKGROUND EFFECTS */
+function startEffect(type){
+  stopEffect();
+  effectInt=setInterval(()=>{
+    const p=document.createElement("div");
+    p.className="particle "+type;
+    p.style.left=Math.random()*100+"vw";
+    p.style.animationDuration=3+Math.random()*4+"s";
+    effects.appendChild(p);
+    setTimeout(()=>p.remove(),6000);
+  },160);
+}
+function stopEffect(){
+  clearInterval(effectInt);
+  effects.innerHTML="";
+}
+
+/* LIVE TIMER */
+function startLiveTimer(subject){
+  stopLiveTimer();
+  liveTimerInterval=setInterval(()=>{
+    const elapsed=Date.now()-state.startTime;
+    const h=Math.floor(elapsed/3600000);
+    const m=Math.floor((elapsed%3600000)/60000);
+    const s=Math.floor((elapsed%60000)/1000);
+    const el=document.getElementById("live-"+subject);
+    if(el){
+      el.innerText=
+        "Studying: "+
+        String(h).padStart(2,"0")+":"+
+        String(m).padStart(2,"0")+":"+
+        String(s).padStart(2,"0");
+    }
+  },1000);
+}
+function stopLiveTimer(){
+  clearInterval(liveTimerInterval);
+  liveTimerInterval=null;
+}
+
+/* TIMER */
+function toggleTimer(sub){
+  if(state.running){
+    stopTimer();
+    stopLiveTimer();
+    document.body.className="";
+    stopEffect();
+  }else{
+    state.running=sub;
+    state.startTime=Date.now();
+    startLiveTimer(sub);
+    document.body.className="";
+
+    if(sub==="Physics") document.body.classList.add("fire-glow");
+    if(sub.includes("Chemistry")){document.body.classList.add("snow-glow");startEffect("snow");}
+    if(sub.includes("Botany")){document.body.classList.add("leaf-glow");startEffect("leaf");}
+    if(sub.includes("Zoology")){document.body.classList.add("earth-glow");startEffect("dust");}
+    if(sub.includes("English")){document.body.classList.add("flower-glow");startEffect("petal");}
+  }
+  updateUI();
+}
+function stopTimer(){
+  const mins=Math.floor((Date.now()-state.startTime)/60000);
+  if(mins>0){
+    state.subjects[state.running]+=mins;
+    state.weekly[new Date().getDay()]+=mins;
+  }
+  state.running=null;
+  state.startTime=null;
+  saveData();
+}
+
+/* STREAK */
+function saveDay(){
+  const t=new Date().toDateString();
+  if(state.lastSaved!==t){
+    const y=new Date(Date.now()-86400000).toDateString();
+    state.streak=(state.lastSaved===y)?state.streak+1:1;
+    state.lastSaved=t;
+  }
+  saveData();
+  updateUI();
+  alert("Day saved!");
+}
+
+/* GRAPH */
+function drawWeeklyChart(){
+  const c=weeklyChart,ctx=c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+  const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const max=Math.max(...state.weekly,10);
+  state.weekly.forEach((v,i)=>{
+    const h=(v/max)*140;
+    ctx.fillStyle="#38bdf8";
+    ctx.fillRect(30+i*70,180-h,40,h);
+    ctx.fillStyle="#fff";
+    ctx.fillText(days[i],30+i*70,205);
+  });
+}
+
+/* SERVICE WORKER */
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("service-worker.js");
+}
+
+/* INIT */
+loadData();
+updateUI();
+window.addEventListener("beforeunload",saveData);
+</script>
 </body>
 </html>
