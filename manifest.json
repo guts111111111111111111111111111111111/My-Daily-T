@@ -1,5 +1,5 @@
-
-  "name": "My Tracker",
+{
+  "name": "My Daily Tracker",
   "short_name": "Tracker",
   "start_url": "./index.html",
   "display": "standalone",
@@ -17,14 +17,7 @@
       "type": "image/png"
     }
   ],
-  "lang": "en",
   "orientation": "portrait",
   "scope": "./",
-  "dir": "ltr",
-  "categories": [
-    "education",
-    "lifestyle",
-    "productivity"
-  ],
-  "description": "A personal offline study tracker with live time, streaks and weekly stats."
+  "description": "A personal offline study tracker with live time and streaks"
 }
